@@ -1,40 +1,37 @@
 import math
 from collections import defaultdict
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import PorterStemmer
+import os
 
 
 class Indexer:
-    def __init__(self):
+    def __init__(self, corpus_dir):
+        self.corpus_dir = corpus_dir
         self.dictionary = {}
         self.postings = defaultdict(list)
         self.doc_lengths = {}
         self.num_docs = 0
+        self.doc_id_map = {}  # Maps company names to numeric doc_ids
 
-        # Download required NLTK data
-        # nltk.download("punkt", quiet=True)
-        # nltk.download("stopwords", quiet=True)
+    def index_corpus(self):
+        for filename in os.listdir(self.corpus_dir):
+            if filename.endswith(".txt"):
+                company_name = filename[:-4]  # Remove '.txt' extension
+                doc_id = len(self.doc_id_map) + 1
+                self.doc_id_map[company_name] = doc_id
 
-        self.stop_words = set(stopwords.words("english"))
-        self.stemmer = PorterStemmer()
+                with open(os.path.join(self.corpus_dir, filename), "r") as f:
+                    preprocessed_terms = (
+                        f.read().split()
+                    )  # Assuming terms are space-separated
+                self.add_document(doc_id, preprocessed_terms)
 
-    def preprocess(self, text):
-        # Tokenize
-        tokens = word_tokenize(text.lower())
-        # Remove stop words and apply stemming
-        return [
-            self.stemmer.stem(token)
-            for token in tokens
-            if token.isalnum() and token not in self.stop_words
-        ]
+        self.finalize_index()
 
-    def add_document(self, doc_id, content):
+    def add_document(self, doc_id, preprocessed_terms):
         self.num_docs += 1
-        terms = self.preprocess(content)
         term_freq = defaultdict(int)
 
-        for term in terms:
+        for term in preprocessed_terms:
             term_freq[term] += 1
 
         doc_length = 0
@@ -52,7 +49,9 @@ class Indexer:
         for term in self.dictionary:
             self.postings[term].sort(key=lambda x: x[0])  # Sort postings by doc_id
 
-    def save_index(self, dictionary_file, postings_file, doc_lengths_file):
+    def save_index(
+        self, dictionary_file, postings_file, doc_lengths_file, doc_id_map_file
+    ):
         with open(dictionary_file, "w") as f:
             for term, term_id in self.dictionary.items():
                 f.write(f"{term},{term_id}\n")
@@ -66,13 +65,14 @@ class Indexer:
             for doc_id, length in self.doc_lengths.items():
                 f.write(f"{doc_id},{length}\n")
 
+        with open(doc_id_map_file, "w") as f:
+            for company, doc_id in self.doc_id_map.items():
+                f.write(f"{company},{doc_id}\n")
+
 
 # Usage example:
-indexer = Indexer()
-# Add documents
-indexer.add_document(1, "This is the first document about information retrieval.")
-indexer.add_document(
-    2, "This document is the second document discussing search engines."
+indexer = Indexer("./preprocessed_corpus/")
+indexer.index_corpus()
+indexer.save_index(
+    "dictionary.txt", "postings.txt", "doc_lengths.txt", "doc_id_map.txt"
 )
-indexer.finalize_index()
-indexer.save_index("dictionary.txt", "postings.txt", "doc_lengths.txt")

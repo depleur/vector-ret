@@ -7,11 +7,14 @@ from nltk.stem import PorterStemmer
 
 
 class Searcher:
-    def __init__(self, dictionary_file, postings_file, doc_lengths_file):
+    def __init__(
+        self, dictionary_file, postings_file, doc_lengths_file, doc_id_map_file
+    ):
         self.dictionary = {}
         self.postings = {}
         self.doc_lengths = {}
         self.num_docs = 0
+        self.doc_id_map = {}
 
         # Download required NLTK data
         nltk.download("punkt", quiet=True)
@@ -20,9 +23,11 @@ class Searcher:
         self.stop_words = set(stopwords.words("english"))
         self.stemmer = PorterStemmer()
 
-        self.load_index(dictionary_file, postings_file, doc_lengths_file)
+        self.load_index(
+            dictionary_file, postings_file, doc_lengths_file, doc_id_map_file
+        )
 
-    def preprocess(self, text):
+    def preprocess_query(self, text):
         # Tokenize
         tokens = word_tokenize(text.lower())
         # Remove stop words and apply stemming
@@ -32,7 +37,9 @@ class Searcher:
             if token.isalnum() and token not in self.stop_words
         ]
 
-    def load_index(self, dictionary_file, postings_file, doc_lengths_file):
+    def load_index(
+        self, dictionary_file, postings_file, doc_lengths_file, doc_id_map_file
+    ):
         with open(dictionary_file, "r") as f:
             for line in f:
                 term, term_id = line.strip().split(",")
@@ -50,10 +57,15 @@ class Searcher:
                 doc_id, length = line.strip().split(",")
                 self.doc_lengths[int(doc_id)] = float(length)
 
+        with open(doc_id_map_file, "r") as f:
+            for line in f:
+                company, doc_id = line.strip().split(",")
+                self.doc_id_map[int(doc_id)] = company
+
         self.num_docs = len(self.doc_lengths)
 
     def search(self, query):
-        query_terms = self.preprocess(query)
+        query_terms = self.preprocess_query(query)
         query_weights = self.compute_query_weights(query_terms)
 
         scores = defaultdict(float)
@@ -67,9 +79,9 @@ class Searcher:
         for doc_id in scores:
             scores[doc_id] /= self.doc_lengths[doc_id]
 
-        # Sort results
+        # Sort results and convert doc_ids to company names
         results = sorted(scores.items(), key=lambda x: (-x[1], x[0]))
-        return [doc_id for doc_id, score in results[:10]]
+        return [(self.doc_id_map[int(doc_id)], score) for doc_id, score in results[:10]]
 
     def compute_query_weights(self, query_terms):
         tf = defaultdict(int)
@@ -93,6 +105,8 @@ class Searcher:
 
 
 # Usage example:
-searcher = Searcher("dictionary.txt", "postings.txt", "doc_lengths.txt")
+searcher = Searcher(
+    "dictionary.txt", "postings.txt", "doc_lengths.txt", "doc_id_map.txt"
+)
 results = searcher.search("information retrieval and search engines")
 print(results)
