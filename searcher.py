@@ -1,13 +1,4 @@
 import math
-import re
-import nltk
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
-
-nltk.download("punkt", quiet=True)
-nltk.download("stopwords", quiet=True)
-nltk.download("wordnet", quiet=True)
 
 
 class Searcher:
@@ -17,24 +8,11 @@ class Searcher:
         self.doc_lengths = {}
         self.document_frequencies = {}
         self.num_docs = 0
-        self.stop_words = set(stopwords.words("english"))
-        self.lemmatizer = WordNetLemmatizer()
-        self.stemmer = nltk.stem.PorterStemmer()
 
         self.load_index(posting_list_file, doc_lengths_file)
 
-    def preprocess(self, text):
-        # Step 2: Preprocess text
-        text = text.lower()
-        text = re.sub(r"\W+", " ", text)
-        tokens = word_tokenize(text)
-        tokens = [word for word in tokens if word not in self.stop_words]
-        tokens = [self.lemmatizer.lemmatize(word) for word in tokens]
-        tokens = [self.stemmer.stem(word) for word in tokens]
-        return tokens
-
     def load_index(self, posting_list_file, doc_lengths_file):
-        # Step 3: Load posting list and document lengths
+        # Step 2: Load posting list and document lengths
         with open(posting_list_file, "r", encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split(": ")
@@ -53,11 +31,11 @@ class Searcher:
         self.num_docs = len(self.doc_lengths)
 
     def calculate_idf_weight(self, df):
-        # Step 4: Calculate IDF weight
+        # Step 3: Calculate IDF weight
         return math.log10(self.num_docs / df) if df > 0 else 0
 
     def normalize_vector(self, vector):
-        # Step 5: Normalize vector
+        # Step 4: Normalize vector
         norm = math.sqrt(sum(weight**2 for weight in vector.values()))
         return (
             {term: weight / norm for term, weight in vector.items()}
@@ -66,15 +44,15 @@ class Searcher:
         )
 
     def compute_cosine_similarity(self, query_vector, doc_vector):
-        # Step 6: Compute cosine similarity
+        # Step 5: Compute cosine similarity
         return sum(
             query_vector[term] * doc_vector.get(term, 0) for term in query_vector
         )
 
-    def search(self, query):
-        # Step 7: Process query and calculate query vector
-        query_tokens = self.preprocess(query)
+    def search(self, preprocessed_query):
+        # Step 6: Process preprocessed query and calculate query vector
         query_vector = {}
+        query_tokens = preprocessed_query.split()  # Assuming tokens are space-separated
 
         for word in set(query_tokens):
             tf = query_tokens.count(word)
@@ -86,7 +64,7 @@ class Searcher:
 
         query_vector = self.normalize_vector(query_vector)
 
-        # Step 8: Calculate document vectors and similarities
+        # Step 7: Calculate document vectors and similarities
         similarities = {}
         for doc_name in self.doc_lengths.keys():
             doc_vector = {}
@@ -98,7 +76,7 @@ class Searcher:
             similarity = self.compute_cosine_similarity(query_vector, doc_vector)
             similarities[doc_name] = similarity
 
-        # Step 9: Rank documents
+        # Step 8: Rank documents
         ranked_docs = sorted(similarities.items(), key=lambda item: (-item[1], item[0]))
         return ranked_docs[:10]
 
@@ -106,16 +84,19 @@ class Searcher:
 # Usage
 searcher = Searcher("posting_list.txt", "doc_lengths.txt")
 
-query1 = "Developing your Zomato business account and profile is a great way to boost your restaurant's online reputation"
-results1 = searcher.search(query1)
+# Note: You need to preprocess these queries in the same way as your corpus
+preprocessed_query1 = (
+    "develop zomato business account profile great way boost restaurant online reput"
+)
+results1 = searcher.search(preprocessed_query1)
 print("Ranked Documents by Relevance for query 1:")
 for doc_name, score in results1:
     print(f"{doc_name}: {score:.4f}")
 
 print("\n")
 
-query2 = "Warwickshire, came from an ancient family and was the heiress to some land"
-results2 = searcher.search(query2)
+preprocessed_query2 = "warwickshir came ancient famili heires land"
+results2 = searcher.search(preprocessed_query2)
 print("Ranked Documents by Relevance for query 2:")
 for doc_name, score in results2:
     print(f"{doc_name}: {score:.4f}")
