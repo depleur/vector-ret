@@ -1,78 +1,87 @@
+import os
 import math
 from collections import defaultdict
-import os
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize
+
+nltk.download("punkt", quiet=True)
+nltk.download("stopwords", quiet=True)
+nltk.download("wordnet", quiet=True)
 
 
 class Indexer:
     def __init__(self, corpus_dir):
         self.corpus_dir = corpus_dir
-        self.dictionary = {}
-        self.postings = defaultdict(list)
+        self.documents = defaultdict(list)
+        self.unique_words = set()
+        self.posting_list = {}
+        self.document_frequencies = defaultdict(int)
         self.doc_lengths = {}
-        self.num_docs = 0
-        self.doc_id_map = {}  # Maps company names to numeric doc_ids
+        self.stop_words = set(stopwords.words("english"))
+        self.lemmatizer = WordNetLemmatizer()
+        self.stemmer = nltk.stem.PorterStemmer()
 
-    def index_corpus(self):
+    def preprocess(self, text):
+        text = text.lower()
+        text = re.sub(r"\W+", " ", text)
+        tokens = word_tokenize(text)
+        tokens = [word for word in tokens if word not in self.stop_words]
+        tokens = [self.lemmatizer.lemmatize(word) for word in tokens]
+        tokens = [self.stemmer.stem(word) for word in tokens]
+        return tokens
+
+    def read_documents(self):
         for filename in os.listdir(self.corpus_dir):
             if filename.endswith(".txt"):
-                company_name = filename[:-4]  # Remove '.txt' extension
-                doc_id = len(self.doc_id_map) + 1
-                self.doc_id_map[company_name] = doc_id
+                with open(
+                    os.path.join(self.corpus_dir, filename), "r", encoding="utf-8"
+                ) as file:
+                    text = file.read()
+                    text_tokens = self.preprocess(text)
+                    self.documents[filename] = text_tokens
+                    self.unique_words.update(text_tokens)
 
-                with open(os.path.join(self.corpus_dir, filename), "r") as f:
-                    preprocessed_terms = (
-                        f.read().split()
-                    )  # Assuming terms are space-separated
-                self.add_document(doc_id, preprocessed_terms)
+    def create_posting_list(self):
 
-        self.finalize_index()
+        for word in self.unique_words:
+            self.posting_list[word] = []
+            for doc_name, text_tokens in self.documents.items():
+                term_freq = text_tokens.count(word)
+                if term_freq > 0:
+                    self.document_frequencies[word] += 1
+                    tf_weight = 1 + math.log10(term_freq)
+                    self.posting_list[word].append((doc_name, tf_weight))
 
-    def add_document(self, doc_id, preprocessed_terms):
-        self.num_docs += 1
-        term_freq = defaultdict(int)
+        # Calculate document lengths
+        for doc_name, text_tokens in self.documents.items():
+            length = 0
+            for word in set(text_tokens):
+                tf = text_tokens.count(word)
+                tf_weight = 1 + math.log10(tf)
+                length += tf_weight**2
+            self.doc_lengths[doc_name] = math.sqrt(length)
 
-        for term in preprocessed_terms:
-            term_freq[term] += 1
+    def save_index(self, posting_list_file, doc_lengths_file):
+        with open(posting_list_file, "w", encoding="utf-8") as f:
+            for word, postings in self.posting_list.items():
+                df = self.document_frequencies[word]
+                f.write(f'"{word}", {df}: [')
+                f.write(", ".join([f'("{doc}", "{tf:.6f}")' for doc, tf in postings]))
+                f.write("]\n")
 
-        doc_length = 0
-        for term, freq in term_freq.items():
-            if term not in self.dictionary:
-                self.dictionary[term] = len(self.dictionary)
+        with open(doc_lengths_file, "w", encoding="utf-8") as f:
+            for doc_name, length in self.doc_lengths.items():
+                f.write(f"{doc_name},{length}\n")
 
-            log_tf = 1 + math.log10(freq)
-            self.postings[term].append((doc_id, log_tf))
-            doc_length += log_tf**2
-
-        self.doc_lengths[doc_id] = math.sqrt(doc_length)
-
-    def finalize_index(self):
-        for term in self.dictionary:
-            self.postings[term].sort(key=lambda x: x[0])  # Sort postings by doc_id
-
-    def save_index(
-        self, dictionary_file, postings_file, doc_lengths_file, doc_id_map_file
-    ):
-        with open(dictionary_file, "w") as f:
-            for term, term_id in self.dictionary.items():
-                f.write(f"{term},{term_id}\n")
-
-        with open(postings_file, "w") as f:
-            for term, postings in self.postings.items():
-                postings_str = " ".join([f"{doc_id}:{tf}" for doc_id, tf in postings])
-                f.write(f"{term},{postings_str}\n")
-
-        with open(doc_lengths_file, "w") as f:
-            for doc_id, length in self.doc_lengths.items():
-                f.write(f"{doc_id},{length}\n")
-
-        with open(doc_id_map_file, "w") as f:
-            for company, doc_id in self.doc_id_map.items():
-                f.write(f"{company},{doc_id}\n")
+    def index_corpus(self):
+        self.read_documents()
+        self.create_posting_list()
+        self.save_index("posting_list.txt", "doc_lengths.txt")
 
 
-# Usage example:
+# Usage
 indexer = Indexer("./preprocessed_corpus/")
 indexer.index_corpus()
-indexer.save_index(
-    "dictionary.txt", "postings.txt", "doc_lengths.txt", "doc_id_map.txt"
-)
