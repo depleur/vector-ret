@@ -12,6 +12,7 @@ nltk.download("wordnet", quiet=True)
 
 class Searcher:
     def __init__(self, posting_list_file, doc_lengths_file):
+        # Step 1: Initialize searcher
         self.posting_list = {}
         self.doc_lengths = {}
         self.document_frequencies = {}
@@ -23,6 +24,7 @@ class Searcher:
         self.load_index(posting_list_file, doc_lengths_file)
 
     def preprocess(self, text):
+        # Step 2: Preprocess text
         text = text.lower()
         text = re.sub(r"\W+", " ", text)
         tokens = word_tokenize(text)
@@ -32,6 +34,7 @@ class Searcher:
         return tokens
 
     def load_index(self, posting_list_file, doc_lengths_file):
+        # Step 3: Load posting list and document lengths
         with open(posting_list_file, "r", encoding="utf-8") as f:
             for line in f:
                 parts = line.strip().split(": ")
@@ -50,9 +53,11 @@ class Searcher:
         self.num_docs = len(self.doc_lengths)
 
     def calculate_idf_weight(self, df):
+        # Step 4: Calculate IDF weight
         return math.log10(self.num_docs / df) if df > 0 else 0
 
     def normalize_vector(self, vector):
+        # Step 5: Normalize vector
         norm = math.sqrt(sum(weight**2 for weight in vector.values()))
         return (
             {term: weight / norm for term, weight in vector.items()}
@@ -61,11 +66,13 @@ class Searcher:
         )
 
     def compute_cosine_similarity(self, query_vector, doc_vector):
+        # Step 6: Compute cosine similarity
         return sum(
             query_vector[term] * doc_vector.get(term, 0) for term in query_vector
         )
 
     def search(self, query):
+        # Step 7: Process query and calculate query vector
         query_tokens = self.preprocess(query)
         query_vector = {}
 
@@ -79,6 +86,7 @@ class Searcher:
 
         query_vector = self.normalize_vector(query_vector)
 
+        # Step 8: Calculate document vectors and similarities
         similarities = {}
         for doc_name in self.doc_lengths.keys():
             doc_vector = {}
@@ -90,6 +98,7 @@ class Searcher:
             similarity = self.compute_cosine_similarity(query_vector, doc_vector)
             similarities[doc_name] = similarity
 
+        # Step 9: Rank documents
         ranked_docs = sorted(similarities.items(), key=lambda item: (-item[1], item[0]))
         return ranked_docs[:10]
 
